@@ -2,6 +2,7 @@ package com.classy.notificationwatcher.core
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import com.classy.notificationwatcher.data.NotificationData
@@ -16,11 +17,18 @@ class NotificationWatcher private constructor(private val context: Context) {
 
     private val database = NotificationDatabase.getDatabase(context)
     private val exporter = NotificationExporter(context)
+    private val listeners = mutableListOf<NotificationListener>()
+    private var currentLaunchIntent: Intent? = null
+    private val PREFS_NAME = "notification_watcher_prefs"
+    private val KEY_IS_WATCHING = "is_watching"
 
     companion object {
         @Volatile
         private var INSTANCE: NotificationWatcher? = null
-
+        /**
+         * Singleton instance of NotificationWatcher.
+         * Use this method to get the instance in your application.
+         */
         fun getInstance(context: Context): NotificationWatcher {
             return INSTANCE ?: synchronized(this) {
                 val instance = NotificationWatcher(context.applicationContext)
@@ -28,6 +36,28 @@ class NotificationWatcher private constructor(private val context: Context) {
                 instance
             }
         }
+    }
+
+    fun addListener(listener: NotificationListener) {
+        listeners.add(listener)
+        NotificationWatcherService.getInstance()?.addNotificationListener(listener)
+    }
+
+    fun removeListener(listener: NotificationListener) {
+        listeners.remove(listener)
+        NotificationWatcherService.getInstance()?.removeNotificationListener(listener)
+    }
+
+    fun getListeners(): List<NotificationListener> = listeners // כדי שהשירות יוכל לבקש את הליסנרים
+
+    fun setLaunchIntent(intent: Intent) {
+        currentLaunchIntent = intent
+        NotificationWatcherService.getInstance()?.setLaunchIntent(intent)
+    }
+
+    fun isWatching(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_IS_WATCHING, false)
     }
 
     fun isNotificationAccessGranted(): Boolean {
@@ -43,22 +73,29 @@ class NotificationWatcher private constructor(private val context: Context) {
 
     fun startWatching(): Boolean {
         if (!isNotificationAccessGranted()) return false
+
         val intent = Intent(context, NotificationWatcherService::class.java)
-        context.startService(intent)
+        currentLaunchIntent?.let {
+            intent.putExtra("launch_intent", it) // Passing the launch intent to the service
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)  // Use startForegroundService
+        } else {
+            context.startService(intent)
+        }
+        // Save the state that we are watching notifications in shared preferences
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_IS_WATCHING, true).apply()
+
         return true
     }
 
     fun stopWatching() {
         val intent = Intent(context, NotificationWatcherService::class.java)
         context.stopService(intent)
-    }
 
-    fun addListener(listener: NotificationListener) {
-        NotificationWatcherService.getInstance()?.addNotificationListener(listener)
-    }
-
-    fun removeListener(listener: NotificationListener) {
-        NotificationWatcherService.getInstance()?.removeNotificationListener(listener)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_IS_WATCHING, false).apply()
     }
 
     fun getAllNotifications(): Flow<List<NotificationData>> =

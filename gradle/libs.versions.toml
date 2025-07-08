@@ -10,7 +10,6 @@ espressoCore = "3.6.1"
 appcompat = "1.7.1"
 kotlinxCoroutinesAndroid = "1.8.1"
 material = "1.12.0"
-mpandroidchart = "v3.1.0"
 roomRuntime = "2.7.2"
 roomCommonJvm = "2.7.2"
 roomRuntimeAndroid = "2.7.2"
@@ -34,7 +33,6 @@ androidx-room-common-jvm = { group = "androidx.room", name = "room-common-jvm", 
 androidx-room-runtime-android = { group = "androidx.room", name = "room-runtime-android", version.ref = "roomRuntimeAndroid" }
 androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
-mpandroidchart = { module = "com.github.PhilJay:MPAndroidChart", version.ref = "mpandroidchart" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

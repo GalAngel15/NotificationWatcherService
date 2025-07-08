@@ -44,7 +44,6 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     implementation (libs.gson.v2101)
-    implementation (libs.mpandroidchart)
 
     kapt(libs.androidx.room.compiler)
 

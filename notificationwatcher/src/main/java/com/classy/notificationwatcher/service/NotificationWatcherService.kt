@@ -10,6 +10,7 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.classy.notificationwatcher.core.NotificationWatcher
 import com.classy.notificationwatcher.data.NotificationData
 import com.classy.notificationwatcher.data.NotificationDatabase
 import com.classy.notificationwatcher.data.NotificationTracking
@@ -37,10 +38,37 @@ class NotificationWatcherService : NotificationListenerService() {
         instance = this
         database = NotificationDatabase.getDatabase(this)
 
+
         createNotificationChannel()
         startForeground(1, buildForegroundNotification())
 
+        NotificationWatcher.getInstance(this).getListeners().forEach {
+            addNotificationListener(it)
+        }
+
         Log.d(TAG, "NotificationWatcherService created")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+
+        // קבל את ה-launch_intent מה-Intent הנוכחי שהפעיל את השירות
+        val receivedLaunchIntent: Intent? = intent?.getParcelableExtra("launch_intent")
+        receivedLaunchIntent?.let {
+            launchIntent = it // עדכן את ה-launchIntent של השירות
+            // אם הנוטיפיקציה כבר קיימת, עדכן אותה עם ה-PendingIntent החדש
+            // זה חשוב אם ה-launchIntent השתנה
+            updateForegroundNotification()
+        }
+
+        // חשוב לוודא שה-Foreground Service מופעל רק פעם אחת ב-onCreate
+        // אבל ניתן לעדכן את הנוטיפיקציה שלו ב-onStartCommand
+
+        return START_STICKY // מבטיח שהשירות ינסה לרוץ מחדש אם נהרג ע"י המערכת
+    }
+
+    private fun updateForegroundNotification() {
+        val notification = buildForegroundNotification()
+        startForeground(1, notification) // מעדכן את הנוטיפיקציה הקיימת
     }
 
     override fun onDestroy() {

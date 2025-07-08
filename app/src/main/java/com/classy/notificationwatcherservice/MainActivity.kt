@@ -37,6 +37,11 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         setupNotificationWatcher()
         setupRecyclerView()
         setupSpinner()
+
+        // If the service is already running and has notification access, start watching notifications
+        if (notificationWatcher.isWatching() && notificationWatcher.isNotificationAccessGranted()) {
+            notificationWatcher.startWatching() // הפעל מחדש את השירות אם הוא אמור לפעול
+        }
         updateUI()
     }
 
@@ -65,9 +70,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
 
-        // NotificationWatcher.setNotificationListener(this)
-        NotificationWatcherService.getInstance()
-            ?.setLaunchIntent(launchIntent)
+        notificationWatcher.setLaunchIntent(launchIntent) // <--- שנה את השורה הזו (קורא ל-setLaunchIntent של NotificationWatcher)
+        notificationWatcher.addListener(this) // <--- הוסף את השורה הזו
     }
 
     private fun setupRecyclerView() {
@@ -110,6 +114,7 @@ class MainActivity : AppCompatActivity(), NotificationListener {
 
     private fun updateUI() {
         val hasPermission = notificationWatcher.isNotificationAccessGranted()
+        val isWatching = notificationWatcher.isWatching() // השג את מצב "צופה" מ-NotificationWatcher
 
         statusText.text = if (hasPermission) {
             "✅ Notification access granted"
@@ -118,7 +123,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         }
 
         permissionButton.isEnabled = !hasPermission
-        startButton.isEnabled = hasPermission
+        startButton.isEnabled = hasPermission && !isWatching
+        stopButton.isEnabled = hasPermission && isWatching
         exportButton.isEnabled = hasPermission
         statsButton.isEnabled = hasPermission
     }

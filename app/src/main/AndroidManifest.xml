@@ -4,6 +4,7 @@
     package="com.classy.notificationwatcherservice">
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:allowBackup="true"
@@ -31,7 +32,8 @@
             android:name="com.classy.notificationwatcher.service.NotificationWatcherService"
             android:label="Notification Watcher"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="false">
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
