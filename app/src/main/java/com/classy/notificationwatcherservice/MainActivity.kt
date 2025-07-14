@@ -1,8 +1,10 @@
 package com.classy.notificationwatcherservice
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -26,7 +28,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
     private lateinit var recyclerView: RecyclerView
     private lateinit var filterSpinner: Spinner
     private lateinit var notificationAdapter: NotificationAdapter
-
+    private lateinit var appFilterSpinner: Spinner
+    private var appFilterMap: Map<String, String> = emptyMap() // appName -> packageName
     private val notifications = mutableListOf<NotificationData>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,6 +46,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
             notificationWatcher.startWatching() // הפעל מחדש את השירות אם הוא אמור לפעול
         }
         updateUI()
+        loadAppFilter()
+
     }
 
     private fun initViews() {
@@ -60,6 +65,7 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         stopButton.setOnClickListener { stopWatching() }
         exportButton.setOnClickListener { exportData() }
         statsButton.setOnClickListener { showStats() }
+        appFilterSpinner = findViewById(R.id.appFilterSpinner)
     }
 
     private fun setupNotificationWatcher() {
@@ -88,27 +94,9 @@ class MainActivity : AppCompatActivity(), NotificationListener {
 
         filterSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                loadNotifications(position)
+                loadFilteredNotifications()
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-    }
-
-    private fun loadNotifications(filterType: Int) {
-        lifecycleScope.launch {
-            val flow = when (filterType) {
-                0 -> notificationWatcher.getAllNotifications()
-                1 -> notificationWatcher.getDeletedNotifications()
-                2 -> notificationWatcher.getTodaysNotifications()
-                3 -> notificationWatcher.getNotificationsFromLastHours(1)
-                else -> notificationWatcher.getAllNotifications()
-            }
-
-            flow.collectLatest { notificationList ->
-                notifications.clear()
-                notifications.addAll(notificationList)
-                notificationAdapter.notifyDataSetChanged()
-            }
         }
     }
 
@@ -156,21 +144,27 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         lifecycleScope.launch {
             try {
                 val externalDir = getExternalFilesDir(null)
+                val timestamp = System.currentTimeMillis()
                 val csvFile = File(externalDir, "notifications_${System.currentTimeMillis()}.csv")
                 val jsonFile = File(externalDir, "notifications_${System.currentTimeMillis()}.json")
 
                 val csvSuccess = notificationWatcher.exportToCsv(csvFile)
                 val jsonSuccess = notificationWatcher.exportToJson(jsonFile)
 
-                val message = when {
-                    csvSuccess && jsonSuccess -> "Exported to:\n${csvFile.absolutePath}\n${jsonFile.absolutePath}"
-                    csvSuccess -> "CSV exported to: ${csvFile.absolutePath}"
-                    jsonSuccess -> "JSON exported to: ${jsonFile.absolutePath}"
-                    else -> "Export failed"
+                val fileToShare = when {
+                    csvSuccess -> csvFile
+                    jsonSuccess -> jsonFile
+                    else -> null
                 }
-
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                if (fileToShare != null) {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Export successful!", Toast.LENGTH_SHORT).show()
+                        shareFile(fileToShare)
+                    }
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Export failed", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -180,6 +174,58 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         }
     }
 
+    private fun shareFile(file: File) {
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${packageName}.provider",
+            file
+        )
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = if (file.name.endsWith(".json")) "application/json" else "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        startActivity(Intent.createChooser(intent, "Open or share exported file"))
+    }
+
+
+    /**
+     * Load the app filter spinner with unique app names from notifications.
+     * This method collects all notifications and populates the spinner with distinct app names.
+     */
+    private fun loadAppFilter() {
+        lifecycleScope.launch {
+            notificationWatcher.getAllNotifications().collectLatest { allNotifications ->
+                val uniqueApps = allNotifications
+                    .map { it.appName to it.packageName }
+                    .distinctBy { it.second }
+                    .sortedBy { it.first }
+
+                appFilterMap = uniqueApps.toMap()
+
+                val appNames = listOf("All Apps") + uniqueApps.map { it.first }
+
+                val adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, appNames)
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+                appFilterSpinner.adapter = adapter
+
+                appFilterSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                        loadFilteredNotifications()
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>?) {}
+                }
+            }
+        }
+    }
+
+    /**
+     * Show notification statistics in a dialog.
+     * This method collects stats from the NotificationWatcher and displays them in a formatted dialog.
+     */
     private fun showStats() {
         lifecycleScope.launch {
             try {
@@ -219,7 +265,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         super.onResume()
         updateUI()
         // Load initial data
-        loadNotifications(0)
+        loadFilteredNotifications()
+
     }
 
     // NotificationListener implementation
@@ -234,4 +281,31 @@ class MainActivity : AppCompatActivity(), NotificationListener {
             Toast.makeText(this, "🗑️ Possible deleted message detected!", Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun loadFilteredNotifications() {
+        val selectedFilter = filterSpinner.selectedItemPosition
+        val selectedAppName = appFilterSpinner.selectedItem?.toString() ?: "All Apps"
+        val selectedPackageName = appFilterMap[selectedAppName]
+
+        lifecycleScope.launch {
+            val baseFlow = when (selectedFilter) {
+                0 -> notificationWatcher.getAllNotifications()
+                1 -> notificationWatcher.getDeletedNotifications()
+                2 -> notificationWatcher.getTodaysNotifications()
+                3 -> notificationWatcher.getNotificationsFromLastHours(1)
+                else -> notificationWatcher.getAllNotifications()
+            }
+
+            baseFlow.collectLatest { list ->
+                val filteredList = if (selectedPackageName != null) {
+                    list.filter { it.packageName == selectedPackageName }
+                } else list
+
+                notifications.clear()
+                notifications.addAll(filteredList)
+                notificationAdapter.notifyDataSetChanged()
+            }
+        }
+    }
+
 }
