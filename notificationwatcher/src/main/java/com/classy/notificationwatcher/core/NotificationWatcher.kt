@@ -1,8 +1,12 @@
 package com.classy.notificationwatcher.core
 
+import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import com.classy.notificationwatcher.data.NotificationData
@@ -17,7 +21,7 @@ class NotificationWatcher private constructor(private val context: Context) {
 
     private val database = NotificationDatabase.getDatabase(context)
     private val exporter = NotificationExporter(context)
-    private val listeners = mutableListOf<NotificationListener>()
+    private val listeners = mutableSetOf<NotificationListener>()
     private var currentLaunchIntent: Intent? = null
     private val PREFS_NAME = "notification_watcher_prefs"
     private val KEY_IS_WATCHING = "is_watching"
@@ -43,12 +47,37 @@ class NotificationWatcher private constructor(private val context: Context) {
         NotificationWatcherService.getInstance()?.addNotificationListener(listener)
     }
 
+    /**
+     * Requests the user to disable battery optimization for the app.
+     * This is necessary to ensure that the notification service runs continuously without being killed by the system.
+     * @param activity The activity from which the dialog is shown.
+     */
+    fun requestBatteryOptimizationDialog(activity: Activity) {
+        val powerManager = activity.getSystemService(PowerManager::class.java)
+        val packageName = activity.packageName
+
+        if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
+            AlertDialog.Builder(activity)
+                .setTitle("⚠️ Battery Optimization")
+                .setMessage("To ensure notifications are always received, please disable battery optimization for this app.\n\nWithout this, Android might stop the service unexpectedly.")
+                .setPositiveButton("Allow") { _, _ ->
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    activity.startActivity(intent)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+
     fun removeListener(listener: NotificationListener) {
         listeners.remove(listener)
         NotificationWatcherService.getInstance()?.removeNotificationListener(listener)
     }
 
-    fun getListeners(): List<NotificationListener> = listeners // כדי שהשירות יוכל לבקש את הליסנרים
+    fun getListeners(): Set<NotificationListener> = listeners // כדי שהשירות יוכל לבקש את הליסנרים
 
     fun setLaunchIntent(intent: Intent) {
         currentLaunchIntent = intent
@@ -93,6 +122,8 @@ class NotificationWatcher private constructor(private val context: Context) {
     fun stopWatching() {
         val intent = Intent(context, NotificationWatcherService::class.java)
         context.stopService(intent)
+
+        NotificationWatcherService.getInstance()?.stopSelf()
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_IS_WATCHING, false).apply()

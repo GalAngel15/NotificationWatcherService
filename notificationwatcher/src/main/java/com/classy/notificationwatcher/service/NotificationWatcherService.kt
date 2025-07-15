@@ -4,7 +4,6 @@ package com.classy.notificationwatcher.service
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -23,7 +22,7 @@ class NotificationWatcherService : NotificationListenerService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var database: NotificationDatabase
-    private val notificationListeners = mutableListOf<NotificationListener>()
+    private val notificationListeners = mutableSetOf<NotificationListener>()
     private var launchIntent: Intent? = null
 
     companion object {
@@ -74,11 +73,16 @@ class NotificationWatcherService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         instance = null
+        notificationListeners.clear()
         Log.d(TAG, "NotificationWatcherService destroyed")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn?.let { notification ->
+            val title = sbn.notification.extras.getCharSequence(Notification.EXTRA_TITLE)
+            val text = sbn.notification.extras.getCharSequence(Notification.EXTRA_TEXT)
+            Log.d("NotificationLog", "📥 [$title] $text")
+
             serviceScope.launch {
                 handleNewNotification(notification)
             }

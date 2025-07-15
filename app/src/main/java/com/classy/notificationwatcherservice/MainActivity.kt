@@ -1,7 +1,6 @@
 package com.classy.notificationwatcherservice
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
@@ -11,7 +10,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.classy.notificationwatcher.core.NotificationWatcher
 import com.classy.notificationwatcher.data.NotificationData
 import com.classy.notificationwatcher.service.NotificationListener
-import com.classy.notificationwatcher.service.NotificationWatcherService
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
@@ -40,6 +38,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         setupNotificationWatcher()
         setupRecyclerView()
         setupSpinner()
+
+        NotificationWatcher.getInstance(this).requestBatteryOptimizationDialog(this)
 
         // If the service is already running and has notification access, start watching notifications
         if (notificationWatcher.isWatching() && notificationWatcher.isNotificationAccessGranted()) {
