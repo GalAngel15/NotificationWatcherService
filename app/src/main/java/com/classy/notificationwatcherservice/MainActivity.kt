@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.classy.notificationwatcher.core.NotificationWatcher
 import com.classy.notificationwatcher.data.NotificationData
 import com.classy.notificationwatcher.service.NotificationListener
+import com.classy.notificationwatcherservice.databinding.ActivityMainBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
