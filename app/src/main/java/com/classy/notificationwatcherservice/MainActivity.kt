@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity(), NotificationListener {
 
         // If the service is already running and has notification access, start watching notifications
         if (notificationWatcher.isWatching() && notificationWatcher.isNotificationAccessGranted()) {
-            notificationWatcher.startWatching() // הפעל מחדש את השירות אם הוא אמור לפעול
+            notificationWatcher.startWatching()
         }
         updateUI()
         loadAppFilter()
@@ -76,8 +76,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
 
-        notificationWatcher.setLaunchIntent(launchIntent) // <--- שנה את השורה הזו (קורא ל-setLaunchIntent של NotificationWatcher)
-        notificationWatcher.addListener(this) // <--- הוסף את השורה הזו
+        notificationWatcher.setLaunchIntent(launchIntent)
+        notificationWatcher.addListener(this)
     }
 
     private fun setupRecyclerView() {
