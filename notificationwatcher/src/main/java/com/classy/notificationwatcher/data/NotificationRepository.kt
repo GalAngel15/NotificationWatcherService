@@ -84,4 +84,11 @@ interface NotificationRepository {
      * corresponding removal callback.
      */
     suspend fun getActiveTrackingForPackage(packageName: String): List<NotificationTracking>
+
+
+    /**
+     *
+     */
+    fun resetSession()
+
 }

@@ -1,16 +1,14 @@
 package com.classy.notificationwatcher.core
 
 import android.app.Activity
-import android.app.AlertDialog
+import android.app.Service.STOP_FOREGROUND_REMOVE
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.os.PowerManager
-import android.provider.Settings
-import androidx.core.app.NotificationManagerCompat
 import com.classy.notificationwatcher.data.NotificationData
 import com.classy.notificationwatcher.data.NotificationDatabase
+import com.classy.notificationwatcher.data.NotificationRepository
+import com.classy.notificationwatcher.data.RoomNotificationRepository
 import com.classy.notificationwatcher.service.NotificationListener
 import com.classy.notificationwatcher.service.NotificationWatcherService
 import com.classy.notificationwatcher.core.utils.NotificationExporter
@@ -19,10 +17,20 @@ import java.io.File
 
 class NotificationWatcher private constructor(private val context: Context) {
 
-    private val database = NotificationDatabase.getDatabase(context)
+    // Repository abstracts access to notification data. By using an interface
+    // here, the watcher is decoupled from Room and can easily be tested.
+    private val repository: NotificationRepository =
+        RoomNotificationRepository(NotificationDatabase.getDatabase(context).notificationDao())
+
     private val exporter = NotificationExporter(context)
+
+    // Responsible solely for managing notification listener & battery
+    // optimisation permissions.
+    private val permissionManager = NotificationPermissionManager(context)
+
     private val listeners = mutableSetOf<NotificationListener>()
     private var currentLaunchIntent: Intent? = null
+
     private val PREFS_NAME = "notification_watcher_prefs"
     private val KEY_IS_WATCHING = "is_watching"
 
@@ -48,27 +56,12 @@ class NotificationWatcher private constructor(private val context: Context) {
     }
 
     /**
-     * Requests the user to disable battery optimization for the app.
-     * This is necessary to ensure that the notification service runs continuously without being killed by the system.
-     * @param activity The activity from which the dialog is shown.
+     * Prompts the user to disable battery optimisation via the
+     * [NotificationPermissionManager]. This delegation keeps permission logic
+     * contained within the manager class.
      */
     fun requestBatteryOptimizationDialog(activity: Activity) {
-        val powerManager = activity.getSystemService(PowerManager::class.java)
-        val packageName = activity.packageName
-
-        if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
-            AlertDialog.Builder(activity)
-                .setTitle("⚠️ Battery Optimization")
-                .setMessage("To ensure notifications are always received, please disable battery optimization for this app.\n\nWithout this, Android might stop the service unexpectedly.")
-                .setPositiveButton("Allow") { _, _ ->
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    activity.startActivity(intent)
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
+        permissionManager.requestDisableBatteryOptimizations(activity)
     }
 
 
@@ -89,15 +82,18 @@ class NotificationWatcher private constructor(private val context: Context) {
         return prefs.getBoolean(KEY_IS_WATCHING, false)
     }
 
-    fun isNotificationAccessGranted(): Boolean {
-        val enabledListeners = NotificationManagerCompat.getEnabledListenerPackages(context)
-        return enabledListeners.contains(context.packageName)
-    }
+    /**
+     * Returns true if the user has granted notification listener access. This
+     * simply delegates to the [NotificationPermissionManager].
+     */
+    fun isNotificationAccessGranted(): Boolean = permissionManager.isNotificationAccessGranted()
 
+    /**
+     * Opens the system settings screen where the user can grant notification
+     * listener access. Delegates to the [NotificationPermissionManager].
+     */
     fun requestNotificationAccess() {
-        val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        permissionManager.requestNotificationAccess()
     }
 
     fun startWatching(): Boolean {
@@ -123,23 +119,27 @@ class NotificationWatcher private constructor(private val context: Context) {
         val intent = Intent(context, NotificationWatcherService::class.java)
         context.stopService(intent)
 
-        NotificationWatcherService.getInstance()?.stopSelf()
+        NotificationWatcherService.getInstance()?.let { service ->
+            service.stopForeground(STOP_FOREGROUND_REMOVE)
+            service.stopSelf()
+        }
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_IS_WATCHING, false).apply()
+        repository.resetSession()
     }
 
     fun getAllNotifications(): Flow<List<NotificationData>> =
-        database.notificationDao().getAllNotifications()
+        repository.getAllNotifications()
 
     fun getNotificationsByApp(packageName: String): Flow<List<NotificationData>> =
-        database.notificationDao().getNotificationsByPackage(packageName)
+        repository.getNotificationsByPackage(packageName)
 
     fun getDeletedNotifications(): Flow<List<NotificationData>> =
-        database.notificationDao().getDeletedNotifications()
+        repository.getDeletedNotifications()
 
     fun getNotificationsByTimeRange(startTime: Long, endTime: Long): Flow<List<NotificationData>> =
-        database.notificationDao().getNotificationsByTimeRange(startTime, endTime)
+        repository.getNotificationsByTimeRange(startTime, endTime)
 
     fun getNotificationsFromLastHours(hours: Int): Flow<List<NotificationData>> {
         val endTime = System.currentTimeMillis()
@@ -159,22 +159,22 @@ class NotificationWatcher private constructor(private val context: Context) {
     }
 
     suspend fun exportToCsv(outputFile: File): Boolean =
-        exporter.exportToCsv(database.notificationDao(), outputFile)
+        exporter.exportToCsv(repository, outputFile)
 
     suspend fun exportToJson(outputFile: File): Boolean =
-        exporter.exportToJson(database.notificationDao(), outputFile)
+        exporter.exportToJson(repository, outputFile)
 
     suspend fun exportAppToCsv(packageName: String, outputFile: File): Boolean =
-        exporter.exportAppToCsv(database.notificationDao(), packageName, outputFile)
+        exporter.exportAppToCsv(repository, packageName, outputFile)
 
     suspend fun exportDeletedToCsv(outputFile: File): Boolean =
-        exporter.exportDeletedToCsv(database.notificationDao(), outputFile)
+        exporter.exportDeletedToCsv(repository, outputFile)
 
     suspend fun cleanOldNotifications(daysToKeep: Int = 30) {
         val cutoff = System.currentTimeMillis() - (daysToKeep * 24 * 60 * 60 * 1000L)
-        database.notificationDao().deleteOldNotifications(cutoff)
+        repository.deleteOldNotifications(cutoff)
     }
 
     suspend fun getNotificationStats(): NotificationStats =
-        NotificationStatsCalculator.calculate(database.notificationDao())
+        NotificationStatsCalculator.calculate(repository)
 }

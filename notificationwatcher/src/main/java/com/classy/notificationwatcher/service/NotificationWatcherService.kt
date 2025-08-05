@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -12,7 +13,9 @@ import androidx.core.app.NotificationCompat
 import com.classy.notificationwatcher.core.NotificationWatcher
 import com.classy.notificationwatcher.data.NotificationData
 import com.classy.notificationwatcher.data.NotificationDatabase
+import com.classy.notificationwatcher.data.NotificationRepository
 import com.classy.notificationwatcher.data.NotificationTracking
+import com.classy.notificationwatcher.data.RoomNotificationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +25,7 @@ class NotificationWatcherService : NotificationListenerService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var database: NotificationDatabase
+    private lateinit var notificationRepository: NotificationRepository
     private val notificationListeners = mutableSetOf<NotificationListener>()
     private var launchIntent: Intent? = null
 
@@ -36,7 +40,7 @@ class NotificationWatcherService : NotificationListenerService() {
         super.onCreate()
         instance = this
         database = NotificationDatabase.getDatabase(this)
-
+        notificationRepository = RoomNotificationRepository(database.notificationDao())
 
         createNotificationChannel()
         startForeground(1, buildForegroundNotification())
@@ -51,18 +55,19 @@ class NotificationWatcherService : NotificationListenerService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
         // קבל את ה-launch_intent מה-Intent הנוכחי שהפעיל את השירות
-        val receivedLaunchIntent: Intent? = intent?.getParcelableExtra("launch_intent")
+        val receivedLaunchIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent?.getParcelableExtra("launch_intent", Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getParcelableExtra("launch_intent") as? Intent
+        }
+
         receivedLaunchIntent?.let {
             launchIntent = it // עדכן את ה-launchIntent של השירות
-            // אם הנוטיפיקציה כבר קיימת, עדכן אותה עם ה-PendingIntent החדש
-            // זה חשוב אם ה-launchIntent השתנה
             updateForegroundNotification()
         }
 
-        // חשוב לוודא שה-Foreground Service מופעל רק פעם אחת ב-onCreate
-        // אבל ניתן לעדכן את הנוטיפיקציה שלו ב-onStartCommand
-
-        return START_STICKY // מבטיח שהשירות ינסה לרוץ מחדש אם נהרג ע"י המערכת
+        return START_NOT_STICKY
     }
 
     private fun updateForegroundNotification() {
@@ -119,7 +124,11 @@ class NotificationWatcherService : NotificationListenerService() {
             )
 
             // Save to database
-            val notificationId = database.notificationDao().insertNotification(notificationData)
+            val notificationId = notificationRepository.insertNotification(notificationData)
+            if (notificationId == -1L) {
+                Log.d(TAG, "⏩ Skipped duplicate notification: ${notificationData.notificationKey}")
+                return
+            }
 
             // Track for deleted message detection
             val tracking = NotificationTracking(
@@ -213,7 +222,7 @@ class NotificationWatcherService : NotificationListenerService() {
     }
 
     private fun createNotificationChannel() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channelId = "notification_watcher_channel"
             val channelName = "Notification Watcher"
             val importance = android.app.NotificationManager.IMPORTANCE_LOW

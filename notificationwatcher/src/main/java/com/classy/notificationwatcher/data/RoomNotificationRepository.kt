@@ -8,6 +8,7 @@ package com.classy.notificationwatcher.data
  * the DAO from [NotificationDatabase].
  */
 class RoomNotificationRepository(private val dao: NotificationDao) : NotificationRepository {
+    private val lastNotifications = mutableListOf<NotificationData>()
 
     override fun getAllNotifications() = dao.getAllNotifications()
 
@@ -19,8 +20,22 @@ class RoomNotificationRepository(private val dao: NotificationDao) : Notificatio
     override fun getNotificationsByTimeRange(startTime: Long, endTime: Long) =
         dao.getNotificationsByTimeRange(startTime, endTime)
 
-    override suspend fun insertNotification(notification: NotificationData): Long =
-        dao.insertNotification(notification)
+    override suspend fun insertNotification(notification: NotificationData): Long {
+        if (isDuplicate(notification)) return -1
+
+        lastNotifications.add(notification)
+        if (lastNotifications.size > 20) lastNotifications.removeAt(0)
+
+        return dao.insertNotification(notification)
+    }
+
+    private fun isDuplicate(newNotification: NotificationData): Boolean {
+        return lastNotifications.any {
+            it.title == newNotification.title &&
+            it.packageName == newNotification.packageName &&
+            it.text == newNotification.text && kotlin.math.abs(it.timestamp - newNotification.timestamp) <= 700
+        }
+    }
 
     override suspend fun updateNotification(notification: NotificationData) {
         dao.updateNotification(notification)
@@ -47,4 +62,9 @@ class RoomNotificationRepository(private val dao: NotificationDao) : Notificatio
 
     override suspend fun getActiveTrackingForPackage(packageName: String): List<NotificationTracking> =
         dao.getActiveTrackingForPackage(packageName)
+
+    override fun resetSession() {
+        lastNotifications.clear()
+    }
+
 }

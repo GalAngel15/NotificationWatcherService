@@ -15,12 +15,14 @@ roomCommonJvm = "2.7.2"
 roomRuntimeAndroid = "2.7.2"
 activity = "1.10.1"
 constraintlayout = "2.2.1"
+viewbinding = "8.12.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
+androidx-viewbinding = { module = "androidx.databinding:viewbinding", version.ref = "viewbinding" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 gson-v2101 = { module = "com.google.code.gson:gson", version.ref = "gsonVersion" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

@@ -2,12 +2,13 @@ package com.classy.notificationwatcher.core.utils
 
 import android.content.Context
 import com.google.gson.GsonBuilder
-import com.classy.notificationwatcher.data.NotificationDao
+import com.classy.notificationwatcher.data.NotificationRepository
 import com.classy.notificationwatcher.data.NotificationData
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.text.Charsets
 
 class NotificationExporter(private val context: Context) {
 
@@ -17,11 +18,18 @@ class NotificationExporter(private val context: Context) {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-    suspend fun exportToCsv(dao: NotificationDao, outputFile: File): Boolean {
+    /**
+     * Exports all notifications from the repository to a CSV file. The
+     * repository abstraction allows the caller to supply any implementation
+     * (e.g. Room, in‑memory, remote) without tying the exporter to a specific
+     * storage mechanism.
+     */
+    suspend fun exportToCsv(repository: NotificationRepository, outputFile: File): Boolean {
         return try {
-            val notifications = dao.getAllNotifications().first()
+            val notifications = repository.getAllNotifications().first()
             val csvContent = buildCsvContent(notifications)
-            outputFile.writeText(csvContent)
+            val bom = "\uFEFF"
+            outputFile.writeText(bom + csvContent, Charsets.UTF_8)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -29,9 +37,12 @@ class NotificationExporter(private val context: Context) {
         }
     }
 
-    suspend fun exportToJson(dao: NotificationDao, outputFile: File): Boolean {
+    /**
+     * Exports all notifications from the repository to a JSON file.
+     */
+    suspend fun exportToJson(repository: NotificationRepository, outputFile: File): Boolean {
         return try {
-            val notifications = dao.getAllNotifications().first()
+            val notifications = repository.getAllNotifications().first()
             val jsonContent = gson.toJson(notifications)
             outputFile.writeText(jsonContent)
             true
@@ -41,11 +52,15 @@ class NotificationExporter(private val context: Context) {
         }
     }
 
-    suspend fun exportAppToCsv(dao: NotificationDao, packageName: String, outputFile: File): Boolean {
+    /**
+     * Exports notifications for a specific package to a CSV file.
+     */
+    suspend fun exportAppToCsv(repository: NotificationRepository, packageName: String, outputFile: File): Boolean {
         return try {
-            val notifications = dao.getNotificationsByPackage(packageName).first()
+            val notifications = repository.getNotificationsByPackage(packageName).first()
             val csvContent = buildCsvContent(notifications)
-            outputFile.writeText(csvContent)
+            val bom = "\uFEFF"
+            outputFile.writeText(bom + csvContent, Charsets.UTF_8)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -53,11 +68,15 @@ class NotificationExporter(private val context: Context) {
         }
     }
 
-    suspend fun exportDeletedToCsv(dao: NotificationDao, outputFile: File): Boolean {
+    /**
+     * Exports only the deleted notifications to a CSV file.
+     */
+    suspend fun exportDeletedToCsv(repository: NotificationRepository, outputFile: File): Boolean {
         return try {
-            val notifications = dao.getDeletedNotifications().first()
+            val notifications = repository.getDeletedNotifications().first()
             val csvContent = buildCsvContent(notifications)
-            outputFile.writeText(csvContent)
+            val bom = "\uFEFF"
+            outputFile.writeText(bom + csvContent, Charsets.UTF_8)
             true
         } catch (e: Exception) {
             e.printStackTrace()

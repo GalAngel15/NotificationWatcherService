@@ -1,15 +1,21 @@
 package com.classy.notificationwatcher.core
 
 import com.classy.notificationwatcher.data.CategoryStat
-import com.classy.notificationwatcher.data.NotificationDao
+import com.classy.notificationwatcher.data.NotificationRepository
 import kotlinx.coroutines.flow.first
 import java.util.*
 
 object NotificationStatsCalculator {
 
-    suspend fun calculate(dao: NotificationDao): NotificationStats {
-        val all = dao.getAllNotifications().first()
-        val deleted = dao.getDeletedNotifications().first()
+    /**
+     * Calculates aggregated statistics about the notifications stored in the
+     * repository. Consuming a [NotificationRepository] rather than a DAO
+     * decouples this logic from a specific persistence technology (e.g. Room)
+     * and allows you to swap in a different implementation or fake for testing.
+     */
+    suspend fun calculate(repository: NotificationRepository): NotificationStats {
+        val all = repository.getAllNotifications().first()
+        val deleted = repository.getDeletedNotifications().first()
         val now = System.currentTimeMillis()
         val calendar = Calendar.getInstance()
 
@@ -18,11 +24,11 @@ object NotificationStatsCalculator {
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
         val startOfDay = calendar.timeInMillis
-        val today = dao.getNotificationsByTimeRange(startOfDay, now).first()
+        val today = repository.getNotificationsByTimeRange(startOfDay, now).first()
 
         calendar.set(Calendar.DAY_OF_WEEK, calendar.firstDayOfWeek)
         val startOfWeek = calendar.timeInMillis
-        val week = dao.getNotificationsByTimeRange(startOfWeek, now).first()
+        val week = repository.getNotificationsByTimeRange(startOfWeek, now).first()
 
         val groupedByApp = all.groupBy { it.packageName }
         val topApps = groupedByApp.map { (pkg, list) ->

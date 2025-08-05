@@ -1,4 +1,5 @@
 package com.classy.notificationwatcherservice
+
 import android.content.Intent
 import android.os.Bundle
 import android.widget.*
@@ -6,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.classy.notificationwatcher.core.NotificationWatcher
 import com.classy.notificationwatcher.data.NotificationData
 import com.classy.notificationwatcher.service.NotificationListener
@@ -14,18 +14,15 @@ import com.classy.notificationwatcherservice.databinding.ActivityMainBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.appcompat.app.AlertDialog
 
 class MainActivity : AppCompatActivity(), NotificationListener {
 
     private lateinit var notificationWatcher: NotificationWatcher
-    private lateinit var statusText: TextView
-    private lateinit var permissionButton: Button
-    private lateinit var startButton: Button
-    private lateinit var stopButton: Button
-    private lateinit var exportButton: Button
-    private lateinit var statsButton: Button
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var filterSpinner: Spinner
+    private lateinit var binding: ActivityMainBinding
     private lateinit var notificationAdapter: NotificationAdapter
     private lateinit var appFilterSpinner: Spinner
     private var appFilterMap: Map<String, String> = emptyMap() // appName -> packageName
@@ -33,7 +30,9 @@ class MainActivity : AppCompatActivity(), NotificationListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        // Inflate view binding and set content view
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         initViews()
         setupNotificationWatcher()
@@ -48,25 +47,16 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         }
         updateUI()
         loadAppFilter()
-
     }
 
     private fun initViews() {
-        statusText = findViewById(R.id.statusText)
-        permissionButton = findViewById(R.id.permissionButton)
-        startButton = findViewById(R.id.startButton)
-        stopButton = findViewById(R.id.stopButton)
-        exportButton = findViewById(R.id.exportButton)
-        statsButton = findViewById(R.id.statsButton)
-        recyclerView = findViewById(R.id.recyclerView)
-        filterSpinner = findViewById(R.id.filterSpinner)
-
-        permissionButton.setOnClickListener { requestPermission() }
-        startButton.setOnClickListener { startWatching() }
-        stopButton.setOnClickListener { stopWatching() }
-        exportButton.setOnClickListener { exportData() }
-        statsButton.setOnClickListener { showStats() }
-        appFilterSpinner = findViewById(R.id.appFilterSpinner)
+        // Assign view references from binding
+        binding.permissionButton.setOnClickListener { requestPermission() }
+        binding.startButton.setOnClickListener { startWatching() }
+        binding.stopButton.setOnClickListener { stopWatching() }
+        binding.exportButton.setOnClickListener { exportData() }
+        binding.statsButton.setOnClickListener { showStats() }
+        appFilterSpinner = binding.appFilterSpinner
     }
 
     private fun setupNotificationWatcher() {
@@ -82,18 +72,20 @@ class MainActivity : AppCompatActivity(), NotificationListener {
     }
 
     private fun setupRecyclerView() {
-        notificationAdapter = NotificationAdapter(notifications)
-        recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = notificationAdapter
+        notificationAdapter = NotificationAdapter(notifications) { notification ->
+            showNotificationDetails(notification)
+        }
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.adapter = notificationAdapter
     }
 
     private fun setupSpinner() {
         val filterOptions = arrayOf("All Notifications", "Deleted Only", "Today Only", "Last Hour")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, filterOptions)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        filterSpinner.adapter = adapter
+        binding.filterSpinner.adapter = adapter
 
-        filterSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        binding.filterSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                 loadFilteredNotifications()
             }
@@ -104,18 +96,16 @@ class MainActivity : AppCompatActivity(), NotificationListener {
     private fun updateUI() {
         val hasPermission = notificationWatcher.isNotificationAccessGranted()
         val isWatching = notificationWatcher.isWatching() // השג את מצב "צופה" מ-NotificationWatcher
-
-        statusText.text = if (hasPermission) {
+        binding.statusText.text = if (hasPermission) {
             "✅ Notification access granted"
         } else {
             "❌ Notification access required"
         }
-
-        permissionButton.isEnabled = !hasPermission
-        startButton.isEnabled = hasPermission && !isWatching
-        stopButton.isEnabled = hasPermission && isWatching
-        exportButton.isEnabled = hasPermission
-        statsButton.isEnabled = hasPermission
+        binding.permissionButton.isEnabled = !hasPermission
+        binding.startButton.isEnabled = hasPermission && !isWatching
+        binding.stopButton.isEnabled = hasPermission && isWatching
+        binding.exportButton.isEnabled = hasPermission
+        binding.statsButton.isEnabled = hasPermission
     }
 
     private fun requestPermission() {
@@ -126,8 +116,8 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         if (notificationWatcher.startWatching()) {
             notificationWatcher.addListener(this)
             Toast.makeText(this, "Started watching notifications", Toast.LENGTH_SHORT).show()
-            startButton.isEnabled = false
-            stopButton.isEnabled = true
+            binding.startButton.isEnabled = false
+            binding.stopButton.isEnabled = true
         } else {
             Toast.makeText(this, "Failed to start - check permissions", Toast.LENGTH_SHORT).show()
         }
@@ -137,15 +127,14 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         notificationWatcher.stopWatching()
         notificationWatcher.removeListener(this)
         Toast.makeText(this, "Stopped watching notifications", Toast.LENGTH_SHORT).show()
-        startButton.isEnabled = true
-        stopButton.isEnabled = false
+        binding.startButton.isEnabled = true
+        binding.stopButton.isEnabled = false
     }
 
     private fun exportData() {
         lifecycleScope.launch {
             try {
                 val externalDir = getExternalFilesDir(null)
-                val timestamp = System.currentTimeMillis()
                 val csvFile = File(externalDir, "notifications_${System.currentTimeMillis()}.csv")
                 val jsonFile = File(externalDir, "notifications_${System.currentTimeMillis()}.json")
 
@@ -190,7 +179,6 @@ class MainActivity : AppCompatActivity(), NotificationListener {
 
         startActivity(Intent.createChooser(intent, "Open or share exported file"))
     }
-
 
     /**
      * Load the app filter spinner with unique app names from notifications.
@@ -248,7 +236,7 @@ class MainActivity : AppCompatActivity(), NotificationListener {
                 }
 
                 runOnUiThread {
-                    androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                    AlertDialog.Builder(this@MainActivity)
                         .setTitle("Notification Statistics")
                         .setMessage(message)
                         .setPositiveButton("OK", null)
@@ -267,7 +255,6 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         updateUI()
         // Load initial data
         loadFilteredNotifications()
-
     }
 
     // NotificationListener implementation
@@ -283,8 +270,37 @@ class MainActivity : AppCompatActivity(), NotificationListener {
         }
     }
 
+    /**
+     * Shows a dialog with full details of a notification. This allows the user to
+     * read long messages that may be truncated in the list and view fields such
+     * as subText and bigText. Deleted notifications will also show the time
+     * they were removed, if available.
+     */
+    private fun showNotificationDetails(notification: NotificationData) {
+        val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val message = buildString {
+            appendLine("App: ${notification.appName}")
+            appendLine("Package: ${notification.packageName}")
+            appendLine("Title: ${notification.title ?: ""}")
+            appendLine("Text: ${notification.text ?: ""}")
+            notification.subText?.let { appendLine("SubText: $it") }
+            notification.bigText?.let { appendLine("BigText: $it") }
+            appendLine("Timestamp: ${formatter.format(Date(notification.timestamp))}")
+            appendLine("Deleted: ${notification.isDeleted}")
+            notification.deletedTimestamp?.let { appendLine("Deleted at: ${formatter.format(Date(it))}") }
+            appendLine("Category: ${notification.category ?: ""}")
+            appendLine("Priority: ${notification.priority}")
+            appendLine("Ongoing: ${notification.isOngoing}")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Notification Details")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
     private fun loadFilteredNotifications() {
-        val selectedFilter = filterSpinner.selectedItemPosition
+        val selectedFilter = binding.filterSpinner.selectedItemPosition
         val selectedAppName = appFilterSpinner.selectedItem?.toString() ?: "All Apps"
         val selectedPackageName = appFilterMap[selectedAppName]
 
@@ -308,5 +324,4 @@ class MainActivity : AppCompatActivity(), NotificationListener {
             }
         }
     }
-
 }
