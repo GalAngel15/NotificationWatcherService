@@ -1,41 +1,39 @@
 # NotificationWatcherService
 
-[](https://jitpack.io/#GalAngel15/NotificationWatcherService)
+A powerful Android library for effortlessly listening, storing, analyzing, and exporting device notifications.
 
-An Android library to effortlessly listen, store, and manage device notifications. It runs as a persistent foreground service to reliably capture all incoming notifications, detect potentially deleted messages from messaging apps, and provides a rich API for querying, analyzing, and exporting notification data.
+It runs as a persistent foreground service, reliably capturing all incoming notifications — even detecting potentially deleted messages (like in WhatsApp). All data is saved in a local Room database and can be accessed via a clean, Kotlin-first API using `Flow`. The library also offers rich statistical insights and built-in export to CSV/JSON formats.
 
------
+---
 
 ## Features
 
-  - **Persistent Service**: Runs as a foreground service to ensure continuous operation.
-  - **Notification Logging**: Automatically saves all incoming notifications to a local Room database for persistence.
-  - **Deleted Message Detection**: Uses heuristics to identify and flag notifications that are removed shortly after being posted, commonly seen in messaging apps like WhatsApp ("This message was deleted").
-  - **Rich Data Querying**: Offers a comprehensive API to retrieve notifications using various criteria:
-      - All notifications
-      - By specific application
-      - Only deleted notifications
-      - Within a specific time range
-  - **In-depth Statistics**: Calculate and retrieve powerful insights from your notification history, including:
-      - Total notifications received
-      - Notifications received today and this week
-      - Top 10 most active apps
-      - Average daily notification count
-      - Peak notification hour
-  - **Data Export**: Easily export notification data to **CSV** or **JSON** formats for backup or external analysis.
-  - **Real-time Listening**: Attach listeners to react to notifications as they are received or deleted in real-time.
-  - **Clean & Simple API**: Designed with a singleton pattern for easy integration and management.
+- **Persistent Foreground Service**: Ensures the service runs continuously and reliably.
+- **Notification Logging**: Saves all notifications locally using Room.
+- **Deleted Message Detection**: Identifies messages that are quickly removed (e.g., "This message was deleted").
+- **Flexible Querying**: Retrieve notifications by:
+  - Application package name
+  - Time range
+  - Deleted-only
+  - All notifications
+- **Insightful Statistics**:
+  - Total, daily, weekly counts
+  - Most active apps
+  - Average per day
+  - Peak notification hour
+- **Export to CSV/JSON**: Backup or analyze your data externally.
+- **Real-time Listeners**: React instantly to new/deleted notifications.
+- **Kotlin-first API**: Uses Flow, suspend functions, and modern patterns.
 
------
+---
 
 ## Setup
 
-### 1\. Add JitPack Repository
+### 1. Add the JitPack repository
 
-Add the JitPack repository to your root `build.gradle` file (or `settings.gradle` for newer projects):
+In your root `settings.gradle` or `build.gradle`:
 
 ```groovy
-// settings.gradle
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -44,194 +42,152 @@ dependencyResolutionManagement {
         maven { url 'https://jitpack.io' } // Add this line
     }
 }
-```
+````
 
-### 2\. Add the Dependency
+### 2. Add the dependency
 
-Add the library dependency to your app-level `build.gradle` (or `build.gradle.kts`) file. **Remember to replace `VERSION` with the latest release number from JitPack.**
+Replace `VERSION` with the latest release from JitPack:
 
 ```groovy
-// build.gradle
 dependencies {
     implementation 'com.github.GalAngel15:NotificationWatcherService:VERSION'
 }
 ```
 
-### 3\. Update AndroidManifest.xml
+---
 
-Declare the service and required permissions in your `AndroidManifest.xml`:
+## Permissions
+
+Make sure to declare the following in your `AndroidManifest.xml`:
 
 ```xml
-<manifest ...>
-
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-        tools:ignore="ProtectedPermissions" />
-
-    <application ...>
-
-        <service
-            android:name="com.classy.notificationwatcher.service.NotificationWatcherService"
-            android:label="NotificationWatcherService"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        </application>
-
-</manifest>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+    tools:ignore="ProtectedPermissions" />
 ```
 
------
+Declare the service inside your `<application>` tag:
+
+```xml
+<service
+    android:name="com.classy.notificationwatcher.service.NotificationWatcherService"
+    android:label="NotificationWatcherService"
+    android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+    </intent-filter>
+</service>
+```
+
+---
 
 ## Usage
 
-### 1\. Initialization and Permissions
-
-The library requires the "Notification Access" permission to function. You should check for this permission and guide the user to grant it if necessary.
+### 1. Initialize the Library
 
 ```kotlin
-// Get the singleton instance
-val watcher = NotificationWatcher.getInstance(this)
-
-// Check for permission first
+val watcher = NotificationWatcher.getInstance(context)
 if (watcher.isNotificationAccessGranted()) {
-    // Permission is granted, you can start the service
     watcher.startWatching()
 } else {
-    // Redirect user to the system settings to grant access
     watcher.requestNotificationAccess()
 }
 ```
 
-### 2\. Starting and Stopping the Service
-
-To ensure the foreground service notification can bring the user back to your app, set a launch intent before starting.
+You can also pass a launch intent to control what happens when the foreground notification is clicked:
 
 ```kotlin
-val watcher = NotificationWatcher.getInstance(this)
-
-// Create an intent to launch your main activity (or any other activity)
-val launchIntent = Intent(this, MainActivity::class.java)
-watcher.setLaunchIntent(launchIntent)
-
-// Start the service
-watcher.startWatching()
-
-// To stop the service later
-watcher.stopWatching()
+watcher.setLaunchIntent(Intent(context, MainActivity::class.java))
 ```
 
-### 3\. Retrieving Notification Data
+---
 
-All data retrieval functions return a `kotlinx.coroutines.flow.Flow`, which is ideal for observing data changes in a modern Android app.
+### 2. Observe Notifications via Flow
 
 ```kotlin
-// Make sure you are in a CoroutineScope
 lifecycleScope.launch {
-    val watcher = NotificationWatcher.getInstance(this@YourActivity)
-
-    // Get all notifications as a Flow
-    watcher.getAllNotifications().collect { notifications ->
-        // Update your UI or process the list of NotificationData
-        Log.d("MyApp", "Total notifications: ${notifications.size}")
+    watcher.getAllNotifications().collect { list ->
+        // Handle list of NotificationData
     }
 
-    // Get notifications for a specific app (e.g., WhatsApp)
-    watcher.getNotificationsByApp("com.whatsapp").collect { whatsappMessages ->
+    watcher.getNotificationsByApp("com.whatsapp").collect { messages ->
         // ...
     }
 
-    // Get only the notifications that were marked as deleted
-    watcher.getDeletedNotifications().collect { deletedNotifications ->
+    watcher.getDeletedNotifications().collect { deleted ->
         // ...
     }
 }
 ```
 
-### 4\. Calculating Statistics
+---
 
-You can get a comprehensive statistical summary with a single suspend function call.
+### 3. Get Statistics
 
 ```kotlin
-lifecycleScope.launch {
-    // This is a suspend function
-    val stats: NotificationStats = NotificationWatcher.getInstance(this@YourActivity).getNotificationStats()
-
-    Log.d("MyApp", "Notifications today: ${stats.notificationsToday}")
-    Log.d("MyApp", "Average per day: ${stats.averagePerDay}")
-    stats.topApps.firstOrNull()?.let { topApp ->
-        Log.d("MyApp", "Top App: ${topApp.appName} with ${topApp.notificationCount} notifications.")
-    }
-}
+val stats = watcher.getNotificationStats()
+Log.d("Stats", "Today: ${stats.notificationsToday}, Peak hour: ${stats.peakHour}")
 ```
 
-### 5\. Exporting Data
+---
 
-Export all notifications to a CSV or JSON file. This is a suspend function and should be called from a coroutine.
+### 4. Export Data
 
 ```kotlin
 lifecycleScope.launch(Dispatchers.IO) {
-    val watcher = NotificationWatcher.getInstance(this@YourActivity)
+    val csvFile = File(filesDir, "notifications.csv")
+    watcher.exportToCsv(csvFile)
 
-    // Export to CSV
-    val csvFile = File(filesDir, "all_notifications.csv")
-    val csvSuccess = watcher.exportToCsv(csvFile)
-    if (csvSuccess) Log.d("MyApp", "Successfully exported to ${csvFile.absolutePath}")
-
-    // Export to JSON
-    val jsonFile = File(filesDir, "all_notifications.json")
-    val jsonSuccess = watcher.exportToJson(jsonFile)
-    if (jsonSuccess) Log.d("MyApp", "Successfully exported to ${jsonFile.absolutePath}")
+    val jsonFile = File(filesDir, "notifications.json")
+    watcher.exportToJson(jsonFile)
 }
 ```
 
-### 6\. Using a Real-time Listener
+---
 
-If you need to react to notifications instantly, you can add a `NotificationListener`.
+### 5. Real-Time Listener
 
 ```kotlin
-val myListener = object : NotificationListener {
+val listener = object : NotificationListener {
     override fun onNotificationReceived(notification: NotificationData) {
-        // A new notification just arrived!
-        Log.d("Realtime", "New notification from ${notification.appName}: ${notification.title}")
+        Log.d("Realtime", "New from ${notification.appName}")
     }
 
     override fun onPossibleDeletedMessage(packageName: String, notificationKey: String, deletedTime: Long) {
-        // A notification was removed quickly, possibly a deleted message
-        Log.w("Realtime", "A message from $packageName might have been deleted.")
+        Log.w("Realtime", "$packageName may have deleted a message.")
     }
 }
-
-// Add the listener
-val watcher = NotificationWatcher.getInstance(this)
-watcher.addListener(myListener)
-
-// Don't forget to remove it when your component is destroyed to avoid memory leaks
-// For example, in onDestroy() or onClear() of a ViewModel
-// watcher.removeListener(myListener)
+watcher.addListener(listener)
 ```
 
------
+Don’t forget to remove the listener when appropriate.
 
-## API Overview
+---
 
-  - **`NotificationWatcher`**: The main singleton class for interacting with the library.
-      - `getInstance(context)`: Gets the singleton instance.
-      - `startWatching()` / `stopWatching()`: Manages the lifecycle of the service.
-      - `isNotificationAccessGranted()` / `requestNotificationAccess()`: Handles permissions.
-      - `getAllNotifications()`: Returns a `Flow<List<NotificationData>>`.
-      - `getNotificationStats()`: Suspend function that returns `NotificationStats`.
-      - `exportToCsv(file)` / `exportToJson(file)`: Suspend functions for data export.
-      - `addListener(listener)` / `removeListener(listener)`: Manages real-time listeners.
-  - **`NotificationData`**: A data class representing a single captured notification.
-  - **`NotificationStats`**: A data class holding all calculated statistics.
+## Architecture Overview
 
------
+| Layer       | Class                             | Responsibility                                     |
+| ----------- | --------------------------------- | -------------------------------------------------- |
+| **UI**      | `MainActivity`                    | Displays notifications and stats                   |
+| **Adapter** | `NotificationAdapter`             | Binds notification list to RecyclerView            |
+| **Core**    | `NotificationWatcher` (singleton) | Main controller – handles service, data, and logic |
+|             | `NotificationStatsCalculator`     | Computes statistics from database                  |
+|             | `NotificationPermissionManager`   | Manages permission logic and battery optimization  |
+|             | `NotificationStats`               | Data class for analytics summary                   |
+| **Data**    | `NotificationData`                | Room entity – single notification                  |
+|             | `NotificationTracking`            | Tracks possible deleted messages                   |
+|             | `RoomNotificationRepository`      | Repository implementation using Room               |
+|             | `NotificationDao`                 | DAO interface for Room                             |
+|             | `NotificationDatabase`            | Room database setup                                |
+| **Service** | `NotificationWatcherService`      | Listens to system notifications and persists them  |
+| **Utils**   | `NotificationExporter`            | Exports data to CSV or JSON                        |
+| **Events**  | `NotificationListener`            | Interface for receiving notification events        |
+
+---
 
 ## License
 
-This project is licensed under the MIT License - see the `LICENSE.md` file for details.
+This project is licensed under the MIT License – see the [LICENSE.md](LICENSE.md) file for details.
+
+```
