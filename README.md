@@ -6,6 +6,12 @@ It runs as a persistent foreground service, reliably capturing all incoming noti
 
 ---
 
+## 📽️ Demo Video
+
+[![Watch the video](https://img.youtube.com/vi/1BElGQRSCg0/0.jpg)](https://youtu.be/1BElGQRSCg0)
+
+---
+
 ## Features
 
 - **Persistent Foreground Service**: Ensures the service runs continuously and reliably.
